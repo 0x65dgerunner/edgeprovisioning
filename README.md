@@ -27,7 +27,7 @@ Feel free to extend the toolkit, add new features, or contribute improvements. T
 Clone the repository and navigate to the project directory:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/0x66616C6C656E/edgekit.git
 cd edgevps
 ```
 
