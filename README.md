@@ -1,5 +1,16 @@
 # Edge Toolkit
 
+[![License](https://img.shields.io/github/license/0x66616C6C656E/edgekit?style=flat-square)](https://github.com/0x66616C6C656E/edgekit)
+[![GitHub Stars](https://img.shields.io/github/stars/0x66616C6C656E/edgekit?style=flat-square)](https://github.com/0x66616C6C656E/edgekit/stargazers)
+[![GitHub Issues](https://img.shields.io/github/issues/0x66616C6C656E/edgekit?style=flat-square)](https://github.com/0x66616C6C656E/edgekit/issues)
+[![GitHub Last Commit](https://img.shields.io/github/last-commit/0x66616C6C656E/edgekit?style=flat-square)](https://github.com/0x66616C6C656E/edgekit/commits)
+[![Shell](https://img.shields.io/badge/shell-Bash-121011?style=flat-square&logo=gnu-bash&logoColor=white)](https://www.gnu.org/software/bash/)
+[![Next.js](https://img.shields.io/badge/Next.js-Production-black?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-Runtime-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Nginx](https://img.shields.io/badge/Nginx-Reverse%20Proxy-009639?style=flat-square&logo=nginx&logoColor=white)](https://nginx.org/)
+[![PM2](https://img.shields.io/badge/PM2-Process%20Manager-2B037A?style=flat-square&logo=pm2&logoColor=white)](https://pm2.keymetrics.io/)
+
 ```text
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠄⠀⠀⠀⢀⣴
 ⠀⠀⠀⠀⠀⠀⠀⢀⣠⣤⣤⣙⠋⠀⠀⢀⣴⣿⡇⠀⠀⠀⠀⠀⡰
