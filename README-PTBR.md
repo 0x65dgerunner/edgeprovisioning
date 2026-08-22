@@ -28,7 +28,7 @@ Clone o repositório e navegue até o diretório do projeto:
 
 ```bash
 git clone https://github.com/0x66616C6C656E/edgekit.git
-cd edgevps
+cd edgekit
 ```
 
 O repositório contém dois arquivos principais:
@@ -117,7 +117,7 @@ Para uma configuração rápida, todo o processo de instalação pode ser realiz
 
 ```bash
 git clone https://github.com/0x66616C6C656E/edgekit.git
-cd edgevps
+cd edgekit
 
 sudo cp edge /usr/local/bin/edge
 sudo chmod +x /usr/local/bin/edge
