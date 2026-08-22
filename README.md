@@ -116,7 +116,7 @@ Once the installation process completes, the server is ready for Next.js applica
 For a quick setup, the complete installation flow can be performed with:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/0x66616C6C656E/edgekit.git
 cd edgevps
 
 sudo cp edge /usr/local/bin/edge
