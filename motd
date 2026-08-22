@@ -1,0 +1,371 @@
+#!/bin/bash
+
+echo
+
+# =========================
+# Cores
+# =========================
+
+RESET='\033[0m'
+BOLD='\033[1m'
+PINK='\033[95m'
+
+
+# =========================
+# ASCII ARTS
+# =========================
+
+ascii() {
+cat <<'EOF'
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠄⠀⠀⠀⢀⣴
+⠀⠀⠀⠀⠀⠀⠀⢀⣠⣤⣤⣙⠋⠀⠀⢀⣴⣿⡇⠀⠀⠀⠀⠀⡰
+⠀⠀⢀⣠⣤⣶⢿⣏⢉⠉⠒⠂⠀⠠⣀⠛⠿⡼⠀⠀⠀⠀⢀⡔⠁
+⣰⣇⣸⣯⣷⣾⣿⣿⣾⠇⢀⣀⣠⣮⣮⢧⢰⠀⠀⠀⢀⣴⡟⠀⠀⡀
+⢻⣿⣿⣿⣿⣿⣿⣿⣷⣿⣿⣿⣿⣿⡿⣱⠏⠀⣀⣴⣾⣿⣷⣤⣾⠁
+⣇⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⡱⢃⣠⣾⣿⣿⣿⢿⣿⣿⢃⡄
+⣭⡛⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣾⣾⣿⣿⣿⣿⣿⣿⣼⣿⣧⡟
+⣿⣿⣷⣮⣙⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠿⠿⣿⢇⣿⠟⠄⣼
+⢿⣿⣿⣿⣿⣷⣮⡝⣿⣿⢟⣉⣙⡫⠭⠭⠛⠛⣛⣿⣶⡿⣩⡾⣸⣿
+⠘⣿⣿⣿⣿⣿⠟⣵⡿⢡⣿⣿⣿⣿⢸⢀⣠⣾⣿⠿⠋⣼⣿⢣⣿⣿
+⠀⣿⣿⣿⡿⢃⠻⣿⣧⣂⠭⠭⠭⠕⣢⣾⡿⡋⣴⣾⢸⡟⠟⣼⣿⣿
+⠀⢻⡿⢟⣴⣿⣿⣮⡙⠿⣿⣿⣿⡿⢛⣵⣾⣇⢿⡿⡜⢧⠀⣿⣿⠿
+⠀⠘⣱⣾⣿⣿⣿⣿⣿⣷⣦⣭⣵⣾⣿⠿⠿⣛⡼⣼⡿⡷⣭⡭⣵⣿
+EOF
+}
+
+
+# =========================
+# ASCII
+# =========================
+
+printf "${PINK}"
+ascii
+printf "${RESET}\n"
+
+
+# =========================
+# Informações do sistema
+# =========================
+
+SISTEMA=$(. /etc/os-release && echo "$PRETTY_NAME")
+
+UPTIME=$(awk '{print int($1)}' /proc/uptime)
+DIAS=$((UPTIME / 86400))
+HORAS=$(((UPTIME % 86400) / 3600))
+MINUTOS=$(((UPTIME % 3600) / 60))
+
+if [ "$DIAS" -gt 0 ]; then
+    UPTIME_PT="${DIAS} dia(s), ${HORAS} hora(s), ${MINUTOS} minuto(s)"
+elif [ "$HORAS" -gt 0 ]; then
+    UPTIME_PT="${HORAS} hora(s), ${MINUTOS} minuto(s)"
+else
+    UPTIME_PT="${MINUTOS} minuto(s)"
+fi
+
+if command -v node >/dev/null 2>&1; then
+    NODE_VERSION=$(node --version)
+else
+    NODE_VERSION="—"
+fi
+
+if command -v npm >/dev/null 2>&1; then
+    NPM_VERSION=$(npm --version)
+else
+    NPM_VERSION="—"
+fi
+
+if [ -s "/root/.nvm/nvm.sh" ]; then
+    NVM_VERSION=$(
+        source /root/.nvm/nvm.sh
+        nvm --version
+    )
+else
+    NVM_VERSION="—"
+fi
+
+if command -v psql >/dev/null 2>&1; then
+    POSTGRES_VERSION=$(psql --version | sed 's/psql (PostgreSQL) //')
+else
+    POSTGRES_VERSION="—"
+fi
+
+if command -v nginx >/dev/null 2>&1; then
+    NGINX_VERSION=$(nginx -v 2>&1 | sed 's/nginx version: nginx\///')
+else
+    NGINX_VERSION="—"
+fi
+
+if command -v git >/dev/null 2>&1; then
+    GIT_VERSION=$(git --version | sed 's/git version //')
+else
+    GIT_VERSION="—"
+fi
+
+# =========================
+# Domínios do Nginx
+# =========================
+NGINX_DOMAINS=""
+
+if command -v nginx >/dev/null 2>&1; then
+
+    NGINX_CONFIG=$(nginx -T 2>/dev/null)
+
+    NGINX_DOMAINS=$(
+        printf '%s\n' "$NGINX_CONFIG" |
+        awk '
+            function add_port(port) {
+                if (port == "")
+                    return
+
+                if (ports == "")
+                    ports=port
+                else if (index("," ports ",", "," port ",") == 0)
+                    ports=ports ", " port
+            }
+
+            /^[[:space:]]*server[[:space:]]*\{/ {
+                in_server=1
+                ports=""
+                domains=""
+                redirect=""
+                has_http=0
+                has_https=0
+                next
+            }
+
+            in_server && /^[[:space:]]*listen[[:space:]]/ {
+                line=$0
+                gsub(/;/, "", line)
+
+                if (match(line, /listen[[:space:]]+[0-9]+/)) {
+                    listen=substr(line, RSTART, RLENGTH)
+                    sub(/^listen[[:space:]]+/, "", listen)
+
+                    add_port(listen)
+
+                    if (listen == "80")
+                        has_http=1
+
+                    if (listen == "443")
+                        has_https=1
+                }
+
+                next
+            }
+
+            in_server && /^[[:space:]]*server_name[[:space:]]/ {
+                line=$0
+                gsub(/;/, "", line)
+                sub(/^[[:space:]]*server_name[[:space:]]+/, "", line)
+
+                split(line, names, /[[:space:]]+/)
+
+                for (i in names) {
+                    name=names[i]
+
+                    if (name == "" || name == "_")
+                        continue
+
+                    if (domains == "")
+                        domains=name
+                    else
+                        domains=domains ", " name
+                }
+
+                next
+            }
+
+            in_server && /^[[:space:]]*return[[:space:]]+/ {
+                line=$0
+                gsub(/;/, "", line)
+
+                if (line ~ /^[[:space:]]*return[[:space:]]+(301|302)[[:space:]]+https:\/\//)
+                    redirect="https"
+
+                next
+            }
+
+            in_server && /^[[:space:]]*\}/ {
+                if (domains != "") {
+
+                    if (has_http && redirect == "https")
+                        print domains "|443"
+                    else
+                        print domains "|" ports
+                }
+
+                in_server=0
+            }
+        ' |
+        awk -F'|' '
+            {
+                domains=$1
+                ports=$2
+
+                if (!(domains in domain_ports)) {
+                    domain_ports[domains]=ports
+                    order[++count]=domains
+                }
+                else {
+                    split(ports, p, /,[[:space:]]*/)
+
+                    for (i in p) {
+                        if (p[i] == "")
+                            continue
+
+                        if (index("," domain_ports[domains] ",", "," p[i] ",") == 0)
+                            domain_ports[domains]=domain_ports[domains] ", " p[i]
+                    }
+                }
+            }
+
+            END {
+                for (i=1; i<=count; i++) {
+                    domains=order[i]
+                    print domains "|" domain_ports[domains]
+                }
+            }
+        '
+    )
+
+fi
+
+# =========================
+# Informações do PM2
+# =========================
+
+PM2_BIN=""
+
+# Procura o PM2 no PATH
+if command -v pm2 >/dev/null 2>&1; then
+    PM2_BIN=$(command -v pm2)
+fi
+
+# Procura o PM2 instalado pelo NVM do root
+if [ -z "$PM2_BIN" ] && [ -d "/root/.nvm/versions/node" ]; then
+    PM2_BIN=$(
+        find /root/.nvm/versions/node \
+            -maxdepth 4 \
+            -type f \
+            -path '*/bin/pm2' \
+            2>/dev/null |
+        sort -V |
+        tail -n 1
+    )
+fi
+
+# Caso seja link simbólico
+if [ -z "$PM2_BIN" ] && [ -d "/root/.nvm/versions/node" ]; then
+    PM2_BIN=$(
+        find /root/.nvm/versions/node \
+            -maxdepth 4 \
+            -type l \
+            -path '*/bin/pm2' \
+            2>/dev/null |
+        sort -V |
+        tail -n 1
+    )
+fi
+
+PM2_ONLINE=0
+PM2_NAMES=""
+
+if [ -n "$PM2_BIN" ] && [ -x "$PM2_BIN" ]; then
+
+    export PM2_HOME="/root/.pm2"
+
+    PM2_JSON=$("$PM2_BIN" jlist 2>/dev/null)
+
+    if command -v jq >/dev/null 2>&1; then
+
+        # Quantidade de processos online
+        PM2_ONLINE=$(
+            printf '%s' "$PM2_JSON" |
+            jq '[.[] | select(.pm2_env.status == "online")] | length' \
+            2>/dev/null
+        )
+
+        # Nome dos processos online
+        PM2_NAMES=$(
+            printf '%s' "$PM2_JSON" |
+            jq -r '
+                [.[] |
+                select(.pm2_env.status == "online") |
+                .name] |
+                join(", ")
+            ' 2>/dev/null
+        )
+
+    fi
+fi
+
+# Garante valores válidos
+case "$PM2_ONLINE" in
+    ''|*[!0-9]*)
+        PM2_ONLINE=0
+        ;;
+esac
+
+if [ -z "$PM2_NAMES" ]; then
+    PM2_NAMES="Nenhum"
+fi
+
+# =========================
+# Informações
+# =========================
+
+hyperlink() {
+    local TEXT="$1"
+    local URL="$2"
+
+    printf '\033]8;;%s\033\\%s\033]8;;\033\\' "$URL" "$TEXT"
+}
+
+printf "${BOLD}${PINK}Sistema     ${RESET}: %s\n" "$SISTEMA"
+printf "${BOLD}${PINK}Kernel      ${RESET}: %s\n" "$(uname -r)"
+printf "${BOLD}${PINK}Uptime      ${RESET}: %s\n" "$UPTIME_PT"
+printf "${BOLD}${PINK}IP          ${RESET}: %s\n" "$(hostname -I | awk '{print $1}')"
+printf "${BOLD}${PINK}Node        ${RESET}: %s\n" "$NODE_VERSION"
+printf "${BOLD}${PINK}NPM         ${RESET}: %s\n" "$NPM_VERSION"
+printf "${BOLD}${PINK}NVM         ${RESET}: %s\n" "$NVM_VERSION"
+printf "${BOLD}${PINK}Git         ${RESET}: %s\n" "$GIT_VERSION"
+printf "${BOLD}${PINK}PostgreSQL  ${RESET}: %s\n" "$POSTGRES_VERSION"
+printf "${BOLD}${PINK}Nginx       ${RESET}: %s\n" "$NGINX_VERSION"
+
+if [ -n "$NGINX_DOMAINS" ]; then
+    printf "${BOLD}${PINK}Domains     ${RESET}: "
+
+    FIRST_DOMAIN=1
+
+    while IFS='|' read -r DOMAINS PORTS; do
+
+        IFS=', ' read -ra DOMAIN_LIST <<< "$DOMAINS"
+
+        for DOMAIN in "${DOMAIN_LIST[@]}"; do
+
+            DOMAIN="${DOMAIN#"${DOMAIN%%[![:space:]]*}"}"
+            DOMAIN="${DOMAIN%"${DOMAIN##*[![:space:]]}"}"
+
+            if [ "$FIRST_DOMAIN" -eq 0 ]; then
+                printf ", "
+            fi
+
+            hyperlink "$DOMAIN" "https://$DOMAIN"
+            printf " [%s]" "$PORTS"
+
+            FIRST_DOMAIN=0
+        done
+
+    done <<< "$NGINX_DOMAINS"
+
+    printf "\n"
+
+else
+    printf "${BOLD}${PINK}Domains     ${RESET}: Nenhum\n"
+fi
+
+printf "${BOLD}${PINK}PM2         ${RESET}: %s [%s]\n" "$PM2_ONLINE" "$PM2_NAMES"
+printf "${BOLD}${PINK}Backed by   ${RESET}: \033]8;;https://gabrielayer.com\033\\\\edgerunner (0x45)\033]8;;\033\\\\\n"
+printf "\n"
+printf "${BOLD}${PINK}!edge ${RESET}for advanced commands panel.${RESET}\n"
+printf "\n"

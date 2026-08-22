@@ -1,0 +1,1781 @@
+#!/bin/bash
+
+# ============================================================
+# EDGE COMMAND PANEL
+# ============================================================
+
+set -u
+
+# ============================================================
+# Cores (apenas rosa e branco)
+# ============================================================
+
+RESET='\033[0m'
+BOLD='\033[1m'
+PINK='\033[95m'
+WHITE='\033[97m'
+
+# Nomes antigos mantidos para compatibilidade, mapeados apenas
+# para rosa e branco.
+CYAN="$WHITE"
+GREEN="$PINK"
+YELLOW="$PINK"
+RED="$WHITE"
+GRAY="$WHITE"
+
+# ============================================================
+# Configuração
+# ============================================================
+
+NVM_DIR="${NVM_DIR:-/root/.nvm}"
+CF_DIR="/etc/ssl/cf"
+CF_CERT="$CF_DIR/cloudflare_origin.crt"
+CF_KEY="$CF_DIR/cloudflare_origin.key"
+
+# ============================================================
+# ASCII
+# ============================================================
+
+ascii() {
+    printf "${PINK}"
+
+    cat <<'EOF'
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠄⠀⠀⠀⢀⣴
+⠀⠀⠀⠀⠀⠀⠀⢀⣠⣤⣤⣙⠋⠀⠀⢀⣴⣿⡇⠀⠀⠀⠀⠀⡰
+⠀⠀⢀⣠⣤⣶⢿⣏⢉⠉⠒⠂⠀⠠⣀⠛⠿⡼⠀⠀⠀⠀⢀⡔⠁
+⣰⣇⣸⣯⣷⣾⣿⣿⣾⠇⢀⣀⣠⣮⣮⢧⢰⠀⠀⠀⢀⣴⡟⠀⠀⡀
+⢻⣿⣿⣿⣿⣿⣿⣿⣷⣿⣿⣿⣿⣿⡿⣱⠏⠀⣀⣴⣾⣿⣷⣤⣾⠁
+⣇⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⡱⢃⣠⣾⣿⣿⣿⢿⣿⣿⢃⡄
+⣭⡛⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣾⣾⣿⣿⣿⣿⣿⣿⣼⣿⣧⡟
+⣿⣿⣷⣮⣙⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠿⠿⣿⢇⣿⠟⠄⣼
+⢿⣿⣿⣿⣿⣷⣮⡝⣿⣿⢟⣉⣙⡫⠭⠭⠛⠛⣛⣿⣶⡿⣩⡾⣸⣿
+⠘⣿⣿⣿⣿⣿⠟⣵⡿⢡⣿⣿⣿⣿⢸⢀⣠⣾⣿⠿⠋⣼⣿⢣⣿⣿
+⠀⣿⣿⣿⡿⢃⠻⣿⣧⣂⠭⠭⠭⠕⣢⣾⡿⡋⣴⣾⢸⡟⠟⣼⣿⣿
+⠀⢻⡿⢟⣴⣿⣿⣮⡙⠿⣿⣿⣿⡿⢛⣵⣾⣇⢿⡿⡜⢧⠀⣿⣿⠿
+⠀⠘⣱⣾⣿⣿⣿⣿⣿⣷⣦⣭⣵⣾⣿⠿⠿⣛⡼⣼⡿⡷⣭⡭⣵⣿
+EOF
+
+    printf "${RESET}\n"
+}
+
+# ============================================================
+# Utilidades
+# ============================================================
+
+pause() {
+    echo
+    read -rp "Press ENTER to continue..." _
+}
+
+header() {
+    clear
+    ascii
+}
+
+ok() {
+    printf "${GREEN}[OK]${RESET} %s\n" "$1"
+}
+
+warn() {
+    printf "${YELLOW}[!]${RESET} %s\n" "$1"
+}
+
+error() {
+    printf "${RED}[ERROR]${RESET} %s\n" "$1"
+}
+
+info() {
+    printf "${CYAN}[INFO]${RESET} %s\n" "$1"
+}
+
+confirm() {
+    local MESSAGE="$1"
+    local ANSWER
+
+    printf "${YELLOW}%s [y/N]: ${RESET}" "$MESSAGE"
+    read -r ANSWER
+
+    case "$ANSWER" in
+        y|Y|yes|YES|Yes)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# ============================================================
+# Root
+# ============================================================
+
+if [ "$EUID" -ne 0 ]; then
+    error "Este painel precisa ser executado como root."
+    exit 1
+fi
+
+# ============================================================
+# INSTALAÇÃO
+# ============================================================
+
+system_update() {
+    header "ATUALIZAÇÃO DO SISTEMA"
+
+    if command_exists apt; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt update && apt upgrade -y
+        ok "Sistema atualizado."
+    elif command_exists dnf; then
+        dnf upgrade -y
+        ok "Sistema atualizado."
+    elif command_exists yum; then
+        yum update -y
+        ok "Sistema atualizado."
+    else
+        warn "Gerenciador de pacotes não suportado para atualização automática."
+    fi
+}
+
+install_nvm_node() {
+    header "INSTALAR NVM + NODE"
+
+    if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+        info "Instalando NVM..."
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    else
+        info "NVM já está instalado."
+    fi
+
+    if load_nvm; then
+        info "Instalando Node (latest)..."
+        nvm install node
+        nvm alias default node
+        ok "Node $(node --version 2>/dev/null) instalado e definido como padrão."
+    else
+        error "Falha ao carregar o NVM."
+    fi
+}
+
+install_postgresql() {
+    header "INSTALAR POSTGRESQL"
+
+    if command_exists apt; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt update
+        apt install -y postgresql postgresql-contrib
+    elif command_exists dnf; then
+        dnf install -y postgresql-server postgresql-contrib
+        postgresql-setup --initdb 2>/dev/null || true
+    else
+        error "Gerenciador de pacotes não suportado."
+        return
+    fi
+
+    systemctl enable --now "$(postgres_service)" 2>/dev/null
+
+    ok "PostgreSQL instalado."
+}
+
+install_nginx_pkg() {
+    header "INSTALAR NGINX"
+
+    if command_exists apt; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt update
+        apt install -y nginx
+    elif command_exists dnf; then
+        dnf install -y nginx
+    else
+        error "Gerenciador de pacotes não suportado."
+        return
+    fi
+
+    systemctl enable --now nginx 2>/dev/null
+
+    ok "Nginx instalado."
+}
+
+install_pm2_pkg() {
+    header "INSTALAR PM2"
+
+    if ! load_nvm || ! command_exists npm; then
+        warn "Node/NVM não encontrado. Instale o Node primeiro."
+        return
+    fi
+
+    npm install -g pm2
+    ok "PM2 instalado."
+}
+
+install_pnpm() {
+    header "INSTALAR PNPM"
+
+    if ! load_nvm || ! command_exists npm; then
+        warn "Node/NVM não encontrado. Instale o Node primeiro."
+        return
+    fi
+
+    npm install -g pnpm
+    ok "pnpm instalado."
+}
+
+install_osv_scanner() {
+    header "INSTALAR OSV-SCANNER"
+
+    local ARCH
+    ARCH=$(uname -m)
+
+    case "$ARCH" in
+        x86_64) ARCH="amd64" ;;
+        aarch64|arm64) ARCH="arm64" ;;
+        *)
+            error "Arquitetura não suportada: $ARCH"
+            return
+            ;;
+    esac
+
+    local URL="https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_${ARCH}"
+
+    curl -fsSL "$URL" -o /usr/local/bin/osv-scanner &&
+        chmod +x /usr/local/bin/osv-scanner
+
+    if command_exists osv-scanner; then
+        ok "osv-scanner instalado."
+    else
+        error "Falha ao instalar osv-scanner."
+    fi
+}
+
+install_all() {
+    header "INSTALAÇÃO AUTOMÁTICA COMPLETA"
+
+    echo "Isso irá:"
+    echo " - Atualizar o sistema"
+    echo " - Instalar NVM + Node (latest)"
+    echo " - Instalar PostgreSQL"
+    echo " - Instalar Nginx"
+    echo " - Instalar PM2"
+    echo " - Instalar pnpm"
+    echo " - Instalar osv-scanner"
+    echo
+
+    if ! confirm "Continuar com a instalação automática?"; then
+        pause
+        return
+    fi
+
+    system_update
+    install_nvm_node
+    install_postgresql
+    install_nginx_pkg
+    install_pm2_pkg
+    install_pnpm
+    install_osv_scanner
+
+    echo
+    ok "Instalação automática concluída."
+    pause
+}
+
+install_menu() {
+
+    while true; do
+
+        header "INSTALAÇÃO"
+
+        echo "[1] Instalação automática completa (tudo)"
+        echo "[2] Instalar NVM + Node (latest)"
+        echo "[3] Instalar PostgreSQL"
+        echo "[4] Instalar Nginx"
+        echo "[5] Instalar PM2"
+        echo "[6] Instalar pnpm"
+        echo "[7] Instalar osv-scanner"
+        echo "[0] Voltar"
+        echo
+
+        read -rp "Select: " OPTION
+
+        case "$OPTION" in
+
+            1)
+                install_all
+                ;;
+
+            2)
+                install_nvm_node
+                pause
+                ;;
+
+            3)
+                install_postgresql
+                pause
+                ;;
+
+            4)
+                install_nginx_pkg
+                pause
+                ;;
+
+            5)
+                install_pm2_pkg
+                pause
+                ;;
+
+            6)
+                install_pnpm
+                pause
+                ;;
+
+            7)
+                install_osv_scanner
+                pause
+                ;;
+
+            0)
+                return
+                ;;
+
+            *)
+                error "Invalid option."
+                sleep 1
+                ;;
+        esac
+
+    done
+}
+
+# ============================================================
+# NGINX
+# ============================================================
+
+nginx_service() {
+    if systemctl list-unit-files 2>/dev/null |
+        grep -q '^nginx.service'; then
+        echo "nginx"
+    else
+        return 1
+    fi
+}
+
+nginx_create_domain() {
+    header "NGINX - NOVO DOMÍNIO"
+
+    read -rp "Domínio (ex: exemplo.com.br): " DOMAIN
+
+    if [ -z "$DOMAIN" ]; then
+        error "Domínio não pode ser vazio."
+        pause
+        return
+    fi
+
+    local SERVER_NAMES="$DOMAIN"
+    read -rp "Incluir www.$DOMAIN? [Y/n]: " WWW_OPT
+
+    if [[ ! "$WWW_OPT" =~ ^[Nn]$ ]]; then
+        SERVER_NAMES="$DOMAIN www.$DOMAIN"
+    fi
+
+    read -rp "Porta do backend (proxy_pass) [5000]: " BACKEND_PORT
+    BACKEND_PORT="${BACKEND_PORT:-5000}"
+
+    local CONF_FILE="/etc/nginx/conf.d/${DOMAIN}.conf"
+
+    if [ -f "$CONF_FILE" ] && ! confirm "Arquivo $CONF_FILE já existe. Sobrescrever?"; then
+        pause
+        return
+    fi
+
+    if [ ! -f "$CF_CERT" ] || [ ! -f "$CF_KEY" ]; then
+        warn "Certificado Cloudflare não encontrado em $CF_DIR"
+        if ! confirm "Continuar mesmo assim?"; then
+            pause
+            return
+        fi
+    fi
+
+    mkdir -p /etc/nginx/conf.d
+
+    cat > "$CONF_FILE" <<EOF_CONF
+server {
+    listen 80;
+    server_name $SERVER_NAMES;
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name $SERVER_NAMES;
+
+    ssl_certificate $CF_CERT;
+    ssl_certificate_key $CF_KEY;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    location / {
+        proxy_pass http://localhost:$BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF_CONF
+
+    ok "Arquivo criado: $CONF_FILE"
+
+    if nginx -t; then
+        if confirm "Recarregar o Nginx agora?"; then
+            systemctl reload nginx
+            ok "Nginx recarregado."
+        fi
+    else
+        error "Configuração inválida. Corrija o arquivo antes de recarregar."
+    fi
+
+    pause
+}
+
+nginx_create_ip_redirect() {
+    header "NGINX - REDIRECIONAMENTO IP -> DOMÍNIO"
+
+    read -rp "IP do servidor (ex: 212.85.0.80): " SERVER_IP
+
+    if [ -z "$SERVER_IP" ]; then
+        error "IP não pode ser vazio."
+        pause
+        return
+    fi
+
+    read -rp "Domínio de destino (ex: new.exemplo.com.br): " TARGET_DOMAIN
+
+    if [ -z "$TARGET_DOMAIN" ]; then
+        error "Domínio de destino não pode ser vazio."
+        pause
+        return
+    fi
+
+    local CONF_FILE="/etc/nginx/conf.d/redirect_from_ip.conf"
+
+    if [ -f "$CONF_FILE" ] && ! confirm "Arquivo $CONF_FILE já existe. Sobrescrever?"; then
+        pause
+        return
+    fi
+
+    if [ ! -f "$CF_CERT" ] || [ ! -f "$CF_KEY" ]; then
+        warn "Certificado Cloudflare não encontrado em $CF_DIR"
+        if ! confirm "Continuar mesmo assim?"; then
+            pause
+            return
+        fi
+    fi
+
+    mkdir -p /etc/nginx/conf.d
+
+    cat > "$CONF_FILE" <<EOF_CONF
+server {
+    listen 80;
+    listen 443 ssl;
+    server_name $SERVER_IP;
+
+    ssl_certificate $CF_CERT;
+    ssl_certificate_key $CF_KEY;
+
+    return 301 https://$TARGET_DOMAIN\$request_uri;
+}
+EOF_CONF
+
+    ok "Arquivo criado: $CONF_FILE"
+
+    if nginx -t; then
+        if confirm "Recarregar o Nginx agora?"; then
+            systemctl reload nginx
+            ok "Nginx recarregado."
+        fi
+    else
+        error "Configuração inválida. Corrija o arquivo antes de recarregar."
+    fi
+
+    pause
+}
+
+nginx_list_domains() {
+    header "NGINX - DOMÍNIOS CONFIGURADOS"
+
+    if ! ls /etc/nginx/conf.d/*.conf >/dev/null 2>&1; then
+        warn "Nenhum arquivo encontrado em /etc/nginx/conf.d/"
+    else
+        ls -1 /etc/nginx/conf.d/*.conf
+    fi
+
+    pause
+}
+
+nginx_remove_domain() {
+    header "NGINX - REMOVER DOMÍNIO"
+
+    if ! ls /etc/nginx/conf.d/*.conf >/dev/null 2>&1; then
+        warn "Nenhum arquivo encontrado em /etc/nginx/conf.d/"
+        pause
+        return
+    fi
+
+    ls -1 /etc/nginx/conf.d/*.conf
+    echo
+
+    read -rp "Nome do arquivo para remover (ex: exemplo.com.br.conf): " FILE_NAME
+    local CONF_FILE="/etc/nginx/conf.d/$FILE_NAME"
+
+    if [ -f "$CONF_FILE" ] && confirm "Remover $CONF_FILE?"; then
+        rm -f "$CONF_FILE"
+        ok "Arquivo removido."
+
+        if nginx -t && confirm "Recarregar o Nginx?"; then
+            systemctl reload nginx
+            ok "Nginx recarregado."
+        fi
+    else
+        warn "Arquivo não encontrado ou operação cancelada."
+    fi
+
+    pause
+}
+
+nginx_menu() {
+
+    while true; do
+
+        header "NGINX MANAGEMENT"
+
+        echo "[1] Status"
+        echo "[2] Test configuration"
+        echo "[3] Reload"
+        echo "[4] Restart"
+        echo "[5] Start"
+        echo "[6] Stop"
+        echo "[7] Enable on boot"
+        echo "[8] Disable on boot"
+        echo "[9] Recent logs"
+        echo "[10] Error log"
+        echo "[11] Configuration dump"
+        echo "[12] Version"
+        echo "[13] Criar novo domínio"
+        echo "[14] Criar redirecionamento IP -> domínio"
+        echo "[15] Listar domínios"
+        echo "[16] Remover domínio"
+        echo "[0] Back"
+        echo
+
+        read -rp "Select: " OPTION
+
+        case "$OPTION" in
+
+            1)
+                systemctl status nginx --no-pager
+                pause
+                ;;
+
+            2)
+                nginx -t
+                pause
+                ;;
+
+            3)
+                if nginx -t; then
+                    systemctl reload nginx
+                    ok "Nginx reloaded."
+                else
+                    error "Configuration test failed."
+                fi
+                pause
+                ;;
+
+            4)
+                if nginx -t; then
+                    if confirm "Restart Nginx?"; then
+                        systemctl restart nginx
+                        systemctl --no-pager --quiet is-active nginx &&
+                            ok "Nginx restarted." ||
+                            error "Nginx failed to start."
+                    fi
+                else
+                    error "Configuration test failed."
+                fi
+                pause
+                ;;
+
+            5)
+                systemctl start nginx
+                ok "Nginx started."
+                pause
+                ;;
+
+            6)
+                if confirm "Stop Nginx?"; then
+                    systemctl stop nginx
+                    ok "Nginx stopped."
+                fi
+                pause
+                ;;
+
+            7)
+                systemctl enable nginx
+                ok "Nginx enabled on boot."
+                pause
+                ;;
+
+            8)
+                if confirm "Disable Nginx on boot?"; then
+                    systemctl disable nginx
+                    ok "Nginx disabled on boot."
+                fi
+                pause
+                ;;
+
+            9)
+                journalctl -u nginx -n 80 --no-pager
+                pause
+                ;;
+
+            10)
+                if [ -f /var/log/nginx/error.log ]; then
+                    tail -n 80 /var/log/nginx/error.log
+                else
+                    warn "error.log not found."
+                fi
+                pause
+                ;;
+
+            11)
+                nginx -T 2>&1 | less -R
+                ;;
+
+            12)
+                nginx -v 2>&1
+                pause
+                ;;
+
+            13)
+                nginx_create_domain
+                ;;
+
+            14)
+                nginx_create_ip_redirect
+                ;;
+
+            15)
+                nginx_list_domains
+                ;;
+
+            16)
+                nginx_remove_domain
+                ;;
+
+            0)
+                return
+                ;;
+
+            *)
+                error "Invalid option."
+                sleep 1
+                ;;
+        esac
+
+    done
+}
+
+# ============================================================
+# CLOUDFLARE
+# ============================================================
+
+cloudflare_install_cert() {
+    header "CLOUDFLARE - INSTALAR CERTIFICADO DE ORIGEM"
+
+    mkdir -p "$CF_DIR"
+
+    echo "Cole o conteúdo do CERTIFICADO (cloudflare_origin.crt)."
+    echo "Ao terminar, digite em uma linha separada apenas: FIM"
+    echo
+
+    local LINE
+    local CERT_CONTENT=""
+
+    while IFS= read -r LINE; do
+        [ "$LINE" = "FIM" ] && break
+        CERT_CONTENT+="$LINE"$'\n'
+    done
+
+    if [ -z "$CERT_CONTENT" ]; then
+        error "Nenhum conteúdo de certificado informado. Operação cancelada."
+        pause
+        return
+    fi
+
+    printf '%s' "$CERT_CONTENT" > "$CF_CERT"
+
+    echo
+    echo "Cole o conteúdo da CHAVE PRIVADA (cloudflare_origin.key)."
+    echo "Ao terminar, digite em uma linha separada apenas: FIM"
+    echo
+
+    local KEY_CONTENT=""
+
+    while IFS= read -r LINE; do
+        [ "$LINE" = "FIM" ] && break
+        KEY_CONTENT+="$LINE"$'\n'
+    done
+
+    if [ -z "$KEY_CONTENT" ]; then
+        error "Nenhum conteúdo de chave informado. Operação cancelada."
+        pause
+        return
+    fi
+
+    printf '%s' "$KEY_CONTENT" > "$CF_KEY"
+
+    chmod 644 "$CF_CERT"
+    chmod 600 "$CF_KEY"
+
+    ok "Certificado de origem instalado em $CF_DIR"
+    pause
+}
+
+cloudflare_view_cert() {
+    header "CLOUDFLARE - CERTIFICADO ATUAL"
+
+    if [ -f "$CF_CERT" ]; then
+        if command_exists openssl; then
+            openssl x509 -in "$CF_CERT" -noout -subject -issuer -dates
+        else
+            echo "Arquivo: $CF_CERT"
+        fi
+    else
+        warn "Nenhum certificado encontrado em $CF_DIR"
+    fi
+
+    pause
+}
+
+cloudflare_remove_cert() {
+    header "CLOUDFLARE - REMOVER CERTIFICADO"
+
+    if [ ! -f "$CF_CERT" ] && [ ! -f "$CF_KEY" ]; then
+        warn "Nenhum certificado encontrado em $CF_DIR"
+        pause
+        return
+    fi
+
+    if confirm "Remover certificado e chave de $CF_DIR?"; then
+        rm -f "$CF_CERT" "$CF_KEY"
+        ok "Certificado removido."
+    fi
+
+    pause
+}
+
+cloudflare_menu() {
+
+    while true; do
+
+        header "CLOUDFLARE"
+
+        if [ -f "$CF_CERT" ]; then
+            printf "Certificado: ${PINK}instalado${RESET}\n\n"
+        else
+            printf "Certificado: ${WHITE}não instalado${RESET}\n\n"
+        fi
+
+        echo "[1] Instalar/Atualizar certificado de origem"
+        echo "[2] Ver certificado atual"
+        echo "[3] Remover certificado"
+        echo "[0] Voltar"
+        echo
+
+        read -rp "Select: " OPTION
+
+        case "$OPTION" in
+
+            1)
+                cloudflare_install_cert
+                ;;
+
+            2)
+                cloudflare_view_cert
+                ;;
+
+            3)
+                cloudflare_remove_cert
+                ;;
+
+            0)
+                return
+                ;;
+
+            *)
+                error "Invalid option."
+                sleep 1
+                ;;
+        esac
+
+    done
+}
+
+# ============================================================
+# NVM / NODE
+# ============================================================
+
+load_nvm() {
+
+    if [ -s "$NVM_DIR/nvm.sh" ]; then
+        export NVM_DIR
+        # shellcheck disable=SC1090
+        source "$NVM_DIR/nvm.sh"
+        return 0
+    fi
+
+    return 1
+}
+
+nvm_menu() {
+
+    if ! load_nvm; then
+        header "NODE VERSION MANAGER (NVM)"
+        error "NVM não encontrado em $NVM_DIR"
+        pause
+        return
+    fi
+
+    while true; do
+
+        header "NODE VERSION MANAGER (NVM)"
+
+        CURRENT_NODE=$(node --version 2>/dev/null || echo "—")
+        CURRENT_NVM=$(nvm --version 2>/dev/null || echo "—")
+
+        printf "Node: ${PINK}%s${RESET}\n" "$CURRENT_NODE"
+        printf "NVM : ${PINK}%s${RESET}\n\n" "$CURRENT_NVM"
+
+        echo "[1] Current version"
+        echo "[2] Installed versions"
+        echo "[3] Remote LTS versions"
+        echo "[4] Install Node version"
+        echo "[5] Use Node version"
+        echo "[6] Set default Node"
+        echo "[7] Update NVM"
+        echo "[8] Remove Node version"
+        echo "[9] npm version"
+        echo "[10] Global npm packages"
+        echo "[0] Back"
+        echo
+
+        read -rp "Select: " OPTION
+
+        case "$OPTION" in
+
+            1)
+                node --version 2>/dev/null || warn "Node not available."
+                npm --version 2>/dev/null || true
+                pause
+                ;;
+
+            2)
+                nvm ls
+                pause
+                ;;
+
+            3)
+                nvm ls-remote --lts | tail -n 30
+                pause
+                ;;
+
+            4)
+                read -rp "Node version (e.g. 22, 20, lts/*): " VERSION
+
+                if [ -n "$VERSION" ]; then
+                    nvm install "$VERSION"
+                fi
+
+                pause
+                ;;
+
+            5)
+                read -rp "Node version: " VERSION
+
+                if [ -n "$VERSION" ]; then
+                    nvm use "$VERSION"
+                fi
+
+                pause
+                ;;
+
+            6)
+                read -rp "Node version: " VERSION
+
+                if [ -n "$VERSION" ]; then
+                    nvm alias default "$VERSION"
+                fi
+
+                pause
+                ;;
+
+            7)
+                if confirm "Update NVM?"; then
+                    TMP_NVM="/tmp/nvm-update.sh"
+
+                    curl -fsSL \
+                        https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh \
+                        -o "$TMP_NVM" &&
+                        bash "$TMP_NVM"
+
+                    rm -f "$TMP_NVM"
+
+                    ok "NVM update completed."
+                fi
+
+                pause
+                ;;
+
+            8)
+                read -rp "Node version to remove: " VERSION
+
+                if [ -n "$VERSION" ] &&
+                    confirm "Remove Node $VERSION?"; then
+                    nvm uninstall "$VERSION"
+                fi
+
+                pause
+                ;;
+
+            9)
+                npm --version
+                pause
+                ;;
+
+            10)
+                npm list -g --depth=0
+                pause
+                ;;
+
+            0)
+                return
+                ;;
+
+            *)
+                error "Invalid option."
+                sleep 1
+                ;;
+        esac
+
+    done
+}
+
+# ============================================================
+# POSTGRESQL
+# ============================================================
+
+postgres_service() {
+
+    local SERVICE
+
+    SERVICE=$(
+        systemctl list-units \
+            --type=service \
+            --all \
+            --no-legend \
+            'postgresql*.service' 2>/dev/null |
+        awk '{print $1}' |
+        head -n 1
+    )
+
+    if [ -z "$SERVICE" ]; then
+        SERVICE="postgresql"
+    fi
+
+    echo "$SERVICE"
+}
+
+postgres_menu() {
+
+    local SERVICE
+    SERVICE=$(postgres_service)
+
+    while true; do
+
+        header "POSTGRESQL MANAGEMENT"
+
+        echo "Service: $SERVICE"
+        echo
+
+        echo "[1] Status"
+        echo "[2] Start"
+        echo "[3] Stop"
+        echo "[4] Restart"
+        echo "[5] Reload"
+        echo "[6] Enable on boot"
+        echo "[7] Disable on boot"
+        echo "[8] Recent logs"
+        echo "[9] Version"
+        echo "[10] Databases"
+        echo "[11] Active connections"
+        echo "[12] Cluster status"
+        echo "[0] Back"
+        echo
+
+        read -rp "Select: " OPTION
+
+        case "$OPTION" in
+
+            1)
+                systemctl status "$SERVICE" --no-pager
+                pause
+                ;;
+
+            2)
+                systemctl start "$SERVICE"
+                ok "PostgreSQL started."
+                pause
+                ;;
+
+            3)
+                if confirm "Stop PostgreSQL?"; then
+                    systemctl stop "$SERVICE"
+                    ok "PostgreSQL stopped."
+                fi
+                pause
+                ;;
+
+            4)
+                if confirm "Restart PostgreSQL?"; then
+                    systemctl restart "$SERVICE"
+                    ok "PostgreSQL restarted."
+                fi
+                pause
+                ;;
+
+            5)
+                systemctl reload "$SERVICE"
+                ok "PostgreSQL reloaded."
+                pause
+                ;;
+
+            6)
+                systemctl enable "$SERVICE"
+                ok "PostgreSQL enabled on boot."
+                pause
+                ;;
+
+            7)
+                if confirm "Disable PostgreSQL on boot?"; then
+                    systemctl disable "$SERVICE"
+                    ok "PostgreSQL disabled on boot."
+                fi
+                pause
+                ;;
+
+            8)
+                journalctl -u "$SERVICE" -n 80 --no-pager
+                pause
+                ;;
+
+            9)
+                if command_exists psql; then
+                    psql --version
+                else
+                    warn "psql not found."
+                fi
+                pause
+                ;;
+
+            10)
+                if command_exists psql; then
+                    sudo -u postgres psql -c '\l'
+                else
+                    warn "psql not found."
+                fi
+                pause
+                ;;
+
+            11)
+                if command_exists psql; then
+                    sudo -u postgres psql -c \
+                        "SELECT datname, count(*) FROM pg_stat_activity GROUP BY datname ORDER BY count(*) DESC;"
+                fi
+                pause
+                ;;
+
+            12)
+                if command_exists pg_lsclusters; then
+                    pg_lsclusters
+                else
+                    systemctl status "$SERVICE" --no-pager
+                fi
+                pause
+                ;;
+
+            0)
+                return
+                ;;
+
+            *)
+                error "Invalid option."
+                sleep 1
+                ;;
+        esac
+
+    done
+}
+
+# ============================================================
+# PM2
+# ============================================================
+
+find_pm2() {
+
+    if command_exists pm2; then
+        command -v pm2
+        return
+    fi
+
+    if [ -d "$NVM_DIR/versions/node" ]; then
+
+        find "$NVM_DIR/versions/node" \
+            -maxdepth 4 \
+            -type f \
+            -path '*/bin/pm2' \
+            2>/dev/null |
+        sort -V |
+        tail -n 1
+
+    fi
+}
+
+pm2_menu() {
+
+    local PM2_BIN
+    PM2_BIN=$(find_pm2)
+
+    if [ -z "$PM2_BIN" ] || [ ! -x "$PM2_BIN" ]; then
+        header "PM2"
+        error "PM2 não encontrado."
+        pause
+        return
+    fi
+
+    export PM2_HOME="/root/.pm2"
+
+    while true; do
+
+        header "PM2 MANAGEMENT"
+
+        echo "[1] Status"
+        echo "[2] List"
+        echo "[3] Restart process"
+        echo "[4] Restart all"
+        echo "[5] Reload process"
+        echo "[6] Reload all"
+        echo "[7] Stop process"
+        echo "[8] Stop all"
+        echo "[9] Start process"
+        echo "[10] Logs"
+        echo "[11] Save process list"
+        echo "[12] Startup"
+        echo "[13] Flush logs"
+        echo "[14] PM2 version"
+        echo "[0] Back"
+        echo
+
+        read -rp "Select: " OPTION
+
+        case "$OPTION" in
+
+            1)
+                "$PM2_BIN" status
+                pause
+                ;;
+
+            2)
+                "$PM2_BIN" list
+                pause
+                ;;
+
+            3)
+                read -rp "Process name/id: " PROCESS
+
+                if [ -n "$PROCESS" ]; then
+                    "$PM2_BIN" restart "$PROCESS"
+                fi
+
+                pause
+                ;;
+
+            4)
+                if confirm "Restart ALL PM2 processes?"; then
+                    "$PM2_BIN" restart all
+                fi
+
+                pause
+                ;;
+
+            5)
+                read -rp "Process name/id: " PROCESS
+
+                if [ -n "$PROCESS" ]; then
+                    "$PM2_BIN" reload "$PROCESS"
+                fi
+
+                pause
+                ;;
+
+            6)
+                if confirm "Reload ALL PM2 processes?"; then
+                    "$PM2_BIN" reload all
+                fi
+
+                pause
+                ;;
+
+            7)
+                read -rp "Process name/id: " PROCESS
+
+                if [ -n "$PROCESS" ]; then
+                    "$PM2_BIN" stop "$PROCESS"
+                fi
+
+                pause
+                ;;
+
+            8)
+                if confirm "Stop ALL PM2 processes?"; then
+                    "$PM2_BIN" stop all
+                fi
+
+                pause
+                ;;
+
+            9)
+                read -rp "Process name/id: " PROCESS
+
+                if [ -n "$PROCESS" ]; then
+                    "$PM2_BIN" start "$PROCESS"
+                fi
+
+                pause
+                ;;
+
+            10)
+                read -rp "Process name/id [all]: " PROCESS
+
+                if [ -z "$PROCESS" ]; then
+                    "$PM2_BIN" logs --lines 100
+                else
+                    "$PM2_BIN" logs "$PROCESS" --lines 100
+                fi
+
+                ;;
+
+            11)
+                "$PM2_BIN" save
+                ok "PM2 process list saved."
+                pause
+                ;;
+
+            12)
+                "$PM2_BIN" startup
+                pause
+                ;;
+
+            13)
+                if confirm "Flush all PM2 logs?"; then
+                    "$PM2_BIN" flush
+                fi
+
+                pause
+                ;;
+
+            14)
+                "$PM2_BIN" --version
+                pause
+                ;;
+
+            0)
+                return
+                ;;
+
+            *)
+                error "Invalid option."
+                sleep 1
+                ;;
+        esac
+
+    done
+}
+
+# ============================================================
+# SYSTEM
+# ============================================================
+
+system_menu() {
+
+    while true; do
+
+        header "SYSTEM MANAGEMENT"
+
+        echo "[1] System information"
+        echo "[2] CPU"
+        echo "[3] Memory"
+        echo "[4] Disk usage"
+        echo "[5] Disk/inodes"
+        echo "[6] Processes"
+        echo "[7] Network"
+        echo "[8] Listening ports"
+        echo "[9] Failed systemd services"
+        echo "[10] Boot time"
+        echo "[11] Kernel"
+        echo "[12] Environment"
+        echo "[13] System updates"
+        echo "[0] Back"
+        echo
+
+        read -rp "Select: " OPTION
+
+        case "$OPTION" in
+
+            1)
+                if command_exists hostnamectl; then
+                    hostnamectl
+                else
+                    cat /etc/os-release
+                    uname -a
+                fi
+                pause
+                ;;
+
+            2)
+                echo
+                uptime
+                echo
+                if command_exists top; then
+                    top -b -n 1 | head -n 15
+                fi
+                pause
+                ;;
+
+            3)
+                free -h
+                echo
+                cat /proc/meminfo | head -n 15
+                pause
+                ;;
+
+            4)
+                df -hT
+                pause
+                ;;
+
+            5)
+                df -ih
+                pause
+                ;;
+
+            6)
+                ps aux --sort=-%cpu | head -n 20
+                pause
+                ;;
+
+            7)
+                ip -brief address
+                echo
+                ip route
+                pause
+                ;;
+
+            8)
+                if command_exists ss; then
+                    ss -tulpn
+                else
+                    netstat -tulpn
+                fi
+                pause
+                ;;
+
+            9)
+                systemctl --failed
+                pause
+                ;;
+
+            10)
+                uptime -s
+                echo
+                systemd-analyze
+                pause
+                ;;
+
+            11)
+                uname -a
+                pause
+                ;;
+
+            12)
+                env | sort | less
+                ;;
+
+            13)
+                if command_exists apt; then
+                    apt update
+                    echo
+                    apt list --upgradable 2>/dev/null
+                elif command_exists dnf; then
+                    dnf check-update || true
+                elif command_exists yum; then
+                    yum check-update || true
+                fi
+
+                pause
+                ;;
+
+            0)
+                return
+                ;;
+
+            *)
+                error "Invalid option."
+                sleep 1
+                ;;
+        esac
+
+    done
+}
+
+# ============================================================
+# SECURITY
+# ============================================================
+
+security_osv() {
+
+    header "OSV-SCANNER"
+
+    if ! command_exists osv-scanner; then
+        warn "osv-scanner não está instalado."
+        echo
+        echo "Você pode instalá-lo pelo menu Instalação (opção 7)."
+        echo
+        pause
+        return
+    fi
+
+    echo "Escolha o diretório do projeto."
+    echo
+
+    read -rp "Directory [.]: " TARGET
+
+    TARGET="${TARGET:-.}"
+
+    if [ ! -d "$TARGET" ]; then
+        error "Directory not found."
+        pause
+        return
+    fi
+
+    echo
+    info "Scanning: $TARGET"
+    echo
+
+    osv-scanner scan source -r "$TARGET"
+
+    pause
+}
+
+security_menu() {
+
+    while true; do
+
+        header "SECURITY"
+
+        echo "[1] OSV-Scanner"
+        echo "[2] Lynis"
+        echo "[3] Listening ports"
+        echo "[4] SSH configuration"
+        echo "[5] Failed SSH logins"
+        echo "[6] SUID files"
+        echo "[7] SGID files"
+        echo "[8] World-writable files"
+        echo "[9] Failed services"
+        echo "[10] Authentication logs"
+        echo "[11] Firewall status"
+        echo "[12] Pending security updates"
+        echo "[13] Kernel security parameters"
+        echo "[14] Users with shell"
+        echo "[0] Back"
+        echo
+
+        read -rp "Select: " OPTION
+
+        case "$OPTION" in
+
+            1)
+                security_osv
+                ;;
+
+            2)
+                if command_exists lynis; then
+                    lynis audit system
+                else
+                    warn "Lynis não está instalado."
+                    echo
+                    echo "Install with your distribution package manager."
+                fi
+
+                pause
+                ;;
+
+            3)
+                ss -tulpn
+                pause
+                ;;
+
+            4)
+                if [ -f /etc/ssh/sshd_config ]; then
+                    grep -Ev '^[[:space:]]*(#|$)' \
+                        /etc/ssh/sshd_config
+                else
+                    warn "/etc/ssh/sshd_config not found."
+                fi
+
+                pause
+                ;;
+
+            5)
+                echo "Recent failed authentication attempts:"
+                echo
+
+                if command_exists journalctl; then
+                    journalctl \
+                        _SYSTEMD_UNIT=sshd.service \
+                        --no-pager 2>/dev/null |
+                    grep -Ei \
+                        'failed|invalid user|authentication failure' |
+                    tail -n 50
+                fi
+
+                if [ -f /var/log/auth.log ]; then
+                    grep -Ei \
+                        'failed|invalid user|authentication failure' \
+                        /var/log/auth.log |
+                    tail -n 50
+                fi
+
+                pause
+                ;;
+
+            6)
+                info "Searching SUID files..."
+                find / \
+                    -xdev \
+                    -type f \
+                    -perm -4000 \
+                    -print \
+                    2>/dev/null |
+                    sort
+
+                pause
+                ;;
+
+            7)
+                info "Searching SGID files..."
+                find / \
+                    -xdev \
+                    -type f \
+                    -perm -2000 \
+                    -print \
+                    2>/dev/null |
+                    sort
+
+                pause
+                ;;
+
+            8)
+                info "Searching world-writable files..."
+                find / \
+                    -xdev \
+                    -type f \
+                    -perm -0002 \
+                    -print \
+                    2>/dev/null |
+                    head -n 200
+
+                pause
+                ;;
+
+            9)
+                systemctl --failed
+                pause
+                ;;
+
+            10)
+                if command_exists journalctl; then
+                    journalctl \
+                        --since "24 hours ago" \
+                        --no-pager |
+                    grep -Ei \
+                        'authentication|failed password|invalid user|sudo|session opened|session closed' |
+                    tail -n 100
+                fi
+
+                pause
+                ;;
+
+            11)
+                if command_exists ufw; then
+                    ufw status verbose
+                elif command_exists firewall-cmd; then
+                    firewall-cmd --state
+                    firewall-cmd --list-all
+                elif command_exists nft; then
+                    nft list ruleset
+                elif command_exists iptables; then
+                    iptables -L -n -v
+                else
+                    warn "No supported firewall tool found."
+                fi
+
+                pause
+                ;;
+
+            12)
+                if command_exists apt; then
+                    apt list --upgradable 2>/dev/null
+                elif command_exists dnf; then
+                    dnf updateinfo list security
+                else
+                    warn "Package manager not supported."
+                fi
+
+                pause
+                ;;
+
+            13)
+                echo "ASLR:"
+                sysctl kernel.randomize_va_space 2>/dev/null || true
+
+                echo
+                echo "Core dumps:"
+                sysctl kernel.core_pattern 2>/dev/null || true
+
+                echo
+                echo "dmesg restrictions:"
+                sysctl kernel.dmesg_restrict 2>/dev/null || true
+
+                echo
+                echo "Unprivileged BPF:"
+                sysctl kernel.unprivileged_bpf_disabled 2>/dev/null || true
+
+                pause
+                ;;
+
+            14)
+                awk -F: '
+                    $7 ~ /(bash|sh|zsh|fish|ksh)$/ {
+                        print $1 ":" $7
+                    }
+                ' /etc/passwd
+
+                pause
+                ;;
+
+            0)
+                return
+                ;;
+
+            *)
+                error "Invalid option."
+                sleep 1
+                ;;
+        esac
+
+    done
+}
+
+# ============================================================
+# MAIN MENU
+# ============================================================
+
+main_menu() {
+
+    while true; do
+
+        header "EDGE COMMAND PANEL"
+
+        printf "${WHITE}VPS Management${RESET}\n\n"
+
+        echo "[1] Instalação"
+        echo "[2] Nginx"
+        echo "[3] Node Version Manager (NVM)"
+        echo "[4] PostgreSQL"
+        echo "[5] PM2"
+        echo "[6] Cloudflare"
+        echo "[7] System"
+        echo "[8] Security"
+        echo
+        echo "[0] Exit"
+        echo
+
+        read -rp "Select: " OPTION
+
+        case "$OPTION" in
+
+            1)
+                install_menu
+                ;;
+
+            2)
+                nginx_menu
+                ;;
+
+            3)
+                nvm_menu
+                ;;
+
+            4)
+                postgres_menu
+                ;;
+
+            5)
+                pm2_menu
+                ;;
+
+            6)
+                cloudflare_menu
+                ;;
+
+            7)
+                system_menu
+                ;;
+
+            8)
+                security_menu
+                ;;
+
+            0)
+                clear
+                exit 0
+                ;;
+
+            *)
+                error "Invalid option."
+                sleep 1
+                ;;
+        esac
+
+    done
+}
+
+# ============================================================
+# START
+# ============================================================
+
+main_menu
