@@ -1,5 +1,6 @@
 # Edge Toolkit
 
+```text
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠄⠀⠀⠀⢀⣴
 ⠀⠀⠀⠀⠀⠀⠀⢀⣠⣤⣤⣙⠋⠀⠀⢀⣴⣿⡇⠀⠀⠀⠀⠀⡰
 ⠀⠀⢀⣠⣤⣶⢿⣏⢉⠉⠒⠂⠀⠠⣀⠛⠿⡼⠀⠀⠀⠀⢀⡔⠁
@@ -13,6 +14,7 @@
 ⠀⣿⣿⣿⡿⢃⠻⣿⣧⣂⠭⠭⠭⠕⣢⣾⡿⡋⣴⣾⢸⡟⠟⣼⣿⣿
 ⠀⢻⡿⢟⣴⣿⣿⣮⡙⠿⣿⣿⣿⡿⢛⣵⣾⣇⢿⡿⡜⢧⠀⣿⣿⠿
 ⠀⠘⣱⣾⣿⣿⣿⣿⣿⣷⣦⣭⣵⣾⣿⠿⠿⣛⡼⣼⡿⡷⣭⡭⣵⣿
+```
 
 For my Next.js applications, I typically use PostgreSQL, Nginx, Cloudflare Origin Certificates, Node.js, and PM2. Setting up and configuring all of these components manually is tedious and error-prone. That’s why I created this toolkit to automate the installation and configuration of the core infrastructure required to deploy and run Next.js applications.
 
