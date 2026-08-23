@@ -1,4 +1,4 @@
-# Edge Provisioning Tool — Fresh start for your Linux VPS.
+# Edge Provisioning Tool — Fresh start for your Linux VPS
 
 [![License](https://img.shields.io/github/license/0x66616C6C656E/edgekit?style=flat-square)](https://github.com/0x66616C6C656E/edgekit)
 [![GitHub Stars](https://img.shields.io/github/stars/0x66616C6C656E/edgekit?style=flat-square)](https://github.com/0x66616C6C656E/edgekit/stargazers)
